@@ -61,6 +61,35 @@ Run inside Neovim, then restart it:
 
 Optional, for Solidity: `:MasonInstall nomicfoundation-solidity-language-server`.
 
+### Font: Terminess Nerd Font
+
+The configs assume a [Nerd Font](https://www.nerdfonts.com/) for icons; I use Terminess
+(the Nerd Fonts build of Terminus).
+
+```sh
+# Arch
+sudo pacman -S ttf-terminus-nerd
+
+# Ubuntu (not packaged in apt, so install from the Nerd Fonts release)
+mkdir -p ~/.local/share/fonts/Terminess
+curl -fLo /tmp/Terminus.tar.xz https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Terminus.tar.xz
+tar -xJf /tmp/Terminus.tar.xz -C ~/.local/share/fonts/Terminess
+fc-cache -f
+
+# macOS
+brew install --cask font-terminess-ttf-nerd-font
+```
+
+Check it's installed with `fc-list | grep -i terminess`, then point your terminal at it.
+For [Ghostty](https://ghostty.org/), add this to `~/.config/ghostty/config`:
+
+```
+font-family = "Terminess Nerd Font"
+font-size = 16
+```
+
+Use `ghostty +list-fonts | grep -i terminess` to see the exact family names available.
+
 ### What each piece is for
 
 | Tool | Used for |
@@ -74,7 +103,7 @@ Optional, for Solidity: `:MasonInstall nomicfoundation-solidity-language-server`
 | `clangd`, `clang-format` | C / C++ LSP and formatting |
 | JDK 21+, `python3`, `jdtls` | Java LSP (jdtls runs on the JDK; its launcher is a Python script) |
 | .NET 10 SDK, `csharp-ls` | C# LSP |
-| A [Nerd Font](https://www.nerdfonts.com/) | File icons in neo-tree, the tabline and completion |
+| A [Nerd Font](https://www.nerdfonts.com/) (Terminess) | File icons in neo-tree, the tabline, completion and the starship prompt |
 
 Java and C# have no separate formatter: they format through their language server.
 
