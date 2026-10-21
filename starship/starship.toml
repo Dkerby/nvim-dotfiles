@@ -1,0 +1,22 @@
+# Two-line prompt joined by a half-loop on the left:
+#   ╭─ ~/dev/nvim-dotfiles/nvim main
+#   ╰─ λ
+add_newline = false
+format = """
+[╭─](cyan) $directory$git_branch
+[╰─](cyan) $character"""
+
+[directory]
+format = "[$path]($style)[$read_only]($read_only_style)"
+style = "blue"  # not bold: many terminals draw bold text in the bright variant
+truncation_length = 0     # never shorten the path
+truncate_to_repo = false  # show the full path inside git repos too
+read_only = " 🔒"
+
+[git_branch]
+format = " [$branch]($style)"
+style = "bold cyan"
+
+[character]
+success_symbol = "[λ](bold red)"
+error_symbol = "[λ](bold red)"

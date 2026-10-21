@@ -67,6 +67,9 @@ require("mini.bufremove").setup()
 require('codediff').setup({})
 
 -- ── mason.nvim ────────────────────────────────────────────────────────────────
+-- Mason needs unzip for most packages:
+--   Arch:   sudo pacman -S unzip
+--   Ubuntu: sudo apt install unzip
 require('mason').setup()
 
 -- ── nvim-notify ───────────────────────────────────────────────────────────────
@@ -127,6 +130,9 @@ vim.lsp.config('*', {
 })
 
 -- ── conform.nvim ──────────────────────────────────────────────────────────────
+-- rustfmt and clang-format come with the Rust and C/C++ installs below.
+-- prettier (JSON) is installed through npm on both distros:
+--   npm install -g prettier
 require('conform').setup({
   formatters = {
     verible_verilog_format = {
@@ -138,9 +144,15 @@ require('conform').setup({
   formatters_by_ft = {
     systemverilog = { 'verible_verilog_format' },
     verilog = { 'verible_verilog_format' },
-    rust = { 'rustfmt'}
+    rust = { 'rustfmt' },
+    c = { 'clang_format' },
+    cpp = { 'clang_format' },
+    json = { 'prettier' },
+    jsonc = { 'prettier' },
+    -- java and cs have no entry: they fall back to jdtls / csharp-ls formatting
   },
-  format_on_save = { timeout_ms = 500, lsp_format = 'fallback' },
+  -- prettier (node startup) and jdtls can take longer than 500ms
+  format_on_save = { timeout_ms = 1500, lsp_format = 'fallback' },
 })
 
 -- ── telescope.nvim ────────────────────────────────────────────────────────────
@@ -202,17 +214,108 @@ require('neo-tree').setup({
 })
 
 -- ── nvim-treesitter ───────────────────────────────────────────────────────────
-local ts_ok, ts_configs = pcall(require, 'nvim-treesitter.configs')
-if ts_ok then
-  ts_configs.setup({
-    ensure_installed = { 'solidity', 'rust', 'lua', 'vim', 'vimdoc', 'regex', 'bash', 'markdown', 'markdown_inline' },
-    auto_install = true,
-    highlight = { enable = true },
-  })
+-- main branch API: parsers are compiled with the tree-sitter CLI and highlighting
+-- is started per buffer by Neovim (the old nvim-treesitter.configs module is gone)
+--   Arch:   sudo pacman -S tree-sitter-cli gcc
+--   Ubuntu: sudo apt install build-essential && cargo install --locked tree-sitter-cli
+--           (apt's tree-sitter-cli is too old for nvim-treesitter main)
+require('nvim-treesitter').install({
+  'solidity', 'rust', 'c', 'cpp', 'cmake', 'make', 'toml', 'java', 'c_sharp', 'json',
+  'lua', 'vim', 'vimdoc', 'regex', 'bash', 'markdown', 'markdown_inline',
+})
+
+vim.api.nvim_create_autocmd('FileType', {
+  callback = function(args)
+    pcall(vim.treesitter.start, args.buf)  -- no-op for filetypes without a parser
+  end,
+})
+
+-- ── Diagnostics ───────────────────────────────────────────────────────────────
+vim.diagnostic.config({ virtual_text = true, severity_sort = true })
+
+-- ── Rust LSP ──────────────────────────────────────────────────────────────────
+--   Arch:   sudo pacman -S rustup
+--   Ubuntu: sudo apt install rustup   (24.04+; older releases use https://rustup.rs)
+-- then on both:
+--   rustup default stable && rustup component add rust-analyzer clippy rustfmt
+-- If `rust-analyzer` still isn't on PATH (Arch's rustup ships no shim for it):
+--   ln -s "$(command -v rustup)" ~/.local/bin/rust-analyzer
+vim.lsp.config('rust_analyzer', {
+  cmd = { 'rust-analyzer' },
+  filetypes = { 'rust' },
+  -- Cargo.lock first so files in workspace members attach to the workspace root
+  root_markers = { 'Cargo.lock', 'rust-project.json', 'Cargo.toml', '.git' },
+  settings = {
+    ['rust-analyzer'] = {
+      check = { command = 'clippy' },
+      cargo = { allFeatures = true },
+    },
+  },
+})
+vim.lsp.enable('rust_analyzer')
+
+-- ── C/C++ LSP ─────────────────────────────────────────────────────────────────
+--   Arch:   sudo pacman -S clang            (includes clangd and clang-format)
+--   Ubuntu: sudo apt install clangd clang-format
+-- clangd reads compile_commands.json from the project root or build/
+vim.lsp.config('clangd', {
+  cmd = {
+    'clangd',
+    '--background-index',
+    '--clang-tidy',
+    '--header-insertion=iwyu',
+    '--completion-style=detailed',
+  },
+  filetypes = { 'c', 'cpp', 'objc', 'objcpp', 'cuda' },
+  root_markers = { '.clangd', 'compile_commands.json', 'compile_flags.txt', 'CMakeLists.txt', '.git' },
+})
+vim.lsp.enable('clangd')
+
+-- ── Java LSP ──────────────────────────────────────────────────────────────────
+-- jdtls needs a JDK 21+ and python3 (for its launcher script):
+--   Arch:   sudo pacman -S jdk-openjdk python
+--   Ubuntu: sudo apt install openjdk-21-jdk python3
+-- then in Neovim: :MasonInstall jdtls
+vim.lsp.config('jdtls', {
+  -- jdtls needs its own -data dir per project, so build the command from root_dir
+  cmd = function(dispatchers, config)
+    local data_dir = vim.fn.stdpath('cache') .. '/jdtls/' .. config.root_dir:gsub('/', '%%')
+    return vim.lsp.rpc.start({ 'jdtls', '-data', data_dir }, dispatchers, { cwd = config.root_dir })
+  end,
+  filetypes = { 'java' },
+  root_markers = { 'mvnw', 'gradlew', 'settings.gradle', 'settings.gradle.kts', 'pom.xml', 'build.gradle', 'build.gradle.kts', '.git' },
+})
+-- a function cmd skips Neovim's "is it installed" check, so do it here to avoid
+-- an error on every Java file before jdtls is installed (restart after installing)
+if vim.fn.executable('jdtls') == 1 then
+  vim.lsp.enable('jdtls')
 end
+
+-- ── C# LSP ────────────────────────────────────────────────────────────────────
+-- csharp-ls needs the .NET 10 SDK:
+--   Arch:   sudo pacman -S dotnet-sdk
+--   Ubuntu: sudo apt install dotnet-sdk-10.0
+-- then in Neovim: :MasonInstall csharp-language-server
+local function find_root(bufnr, pattern)
+  return vim.fs.root(bufnr, function(name) return name:match(pattern) ~= nil end)
+end
+
+vim.lsp.config('csharp_ls', {
+  cmd = { 'csharp-ls' },
+  filetypes = { 'cs' },
+  -- csharp-ls registers its features for the 'csharp' language id, not the 'cs' filetype
+  get_language_id = function() return 'csharp' end,
+  -- prefer the solution over the nearest project file
+  root_dir = function(bufnr, on_dir)
+    local root = find_root(bufnr, '%.slnx?$') or find_root(bufnr, '%.csproj$')
+    if root then on_dir(root) end
+  end,
+})
+vim.lsp.enable('csharp_ls')
 
 -- ── Solidity LSP ──────────────────────────────────────────────────────────────
 -- Install the server first with :MasonInstall nomicfoundation-solidity-language-server
+-- (needs Node.js: `sudo pacman -S nodejs npm` / `sudo apt install nodejs npm`)
 vim.lsp.config('nomicfoundation_solidity', {
   cmd = { 'nomicfoundation-solidity-language-server', '--stdio' },
   filetypes = { 'solidity' },

@@ -31,6 +31,42 @@ end, { desc = 'Format file' })
 -- ── LSP ──────────────────────────────────────────────────────────────────────
 map('n', '<leader>ds', vim.diagnostic.setloclist, { desc = 'Diagnostic loclist' })
 
+-- Built-in defaults also apply: K hover, grn rename, gra code action,
+-- grr references, gri implementation, gO symbols, [d / ]d diagnostics
+vim.api.nvim_create_autocmd('LspAttach', {
+  callback = function(args)
+    local bufnr = args.buf
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    local function bmap(lhs, rhs, desc)
+      map('n', lhs, rhs, { buffer = bufnr, desc = desc })
+    end
+
+    bmap('gd', vim.lsp.buf.definition,      'Go to definition')
+    bmap('gD', vim.lsp.buf.declaration,     'Go to declaration')
+    bmap('gy', vim.lsp.buf.type_definition, 'Go to type definition')
+
+    if client and client:supports_method('textDocument/inlayHint') then
+      vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+      bmap('<leader>ih', function()
+        vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
+      end, 'Toggle inlay hints')
+    end
+
+    if client and client.name == 'clangd' then
+      bmap('<leader>ch', function()
+        local params = vim.lsp.util.make_text_document_params(bufnr)
+        client:request('textDocument/switchSourceHeader', params, function(err, uri)
+          if err or not uri then
+            vim.notify('No matching source/header found', vim.log.levels.WARN)
+            return
+          end
+          vim.cmd.edit(vim.uri_to_fname(uri))
+        end, bufnr)
+      end, 'Switch source/header')
+    end
+  end,
+})
+
 -- ── Buffers ──────────────────────────────────────────────────────────────────
 map('n', '<leader>b', '<cmd>enew<CR>',    { desc = 'New buffer' })
 map('n', '<Tab>',     '<cmd>bnext<CR>',   { desc = 'Next buffer' })
